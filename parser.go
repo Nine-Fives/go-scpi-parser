@@ -2,6 +2,7 @@ package scpi
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -227,6 +228,7 @@ func (c *Context) Parse(data []byte) error {
 
 		// Set current command
 		c.currentCmd = cmd
+		c.currentHeader = headerStr
 		c.cmdError = false
 		c.inputCount = 0
 
@@ -321,6 +323,54 @@ func (c *Context) IsCmd(pattern string) bool {
 	return matchCommand(pattern, c.currentCmd.Pattern)
 }
 
+// CommandNumbers extracts numeric suffixes from the current command header.
+// Pattern parts ending with # (e.g. "TEST#:NUMbers#") indicate positions where
+// numeric suffixes can appear. For example, header "TEST1:NUMBERS2" yields [1, 2].
+// If a suffix is absent, defaultValue is used. The returned slice has length count.
+func (c *Context) CommandNumbers(count int, defaultValue int32) []int32 {
+	result := make([]int32, count)
+	for i := range result {
+		result[i] = defaultValue
+	}
+
+	if c.currentCmd == nil || c.currentHeader == "" {
+		return result
+	}
+
+	pattern := strings.TrimSuffix(c.currentCmd.Pattern, "?")
+	pattern = strings.ReplaceAll(pattern, "[", "")
+	pattern = strings.ReplaceAll(pattern, "]", "")
+
+	header := strings.TrimSuffix(c.currentHeader, "?")
+
+	patternParts := strings.Split(pattern, ":")
+	headerParts := strings.Split(header, ":")
+
+	idx := 0
+	for i := 0; i < len(patternParts) && i < len(headerParts) && idx < count; i++ {
+		pp := patternParts[i]
+		if !strings.Contains(pp, "#") {
+			continue
+		}
+
+		// Extract trailing digits from the header part
+		hp := headerParts[i]
+		digitStart := len(hp)
+		for digitStart > 0 && hp[digitStart-1] >= '0' && hp[digitStart-1] <= '9' {
+			digitStart--
+		}
+
+		if digitStart < len(hp) {
+			if val, err := strconv.Atoi(hp[digitStart:]); err == nil {
+				result[idx] = int32(val)
+			}
+		}
+		idx++
+	}
+
+	return result
+}
+
 // writeData writes data to output
 func (c *Context) writeData(data []byte) (int, error) {
 	if c.iface != nil && c.iface.Write != nil {
@@ -406,6 +456,19 @@ func (c *Context) ResultBool(value bool) error {
 func (c *Context) ResultMnemonic(data string) error {
 	c.writeDelimiter()
 	c.writeData([]byte(data))
+	c.outputCount++
+	c.firstOutput = false
+	return nil
+}
+
+// ResultArbitraryBlock writes data in IEEE 488.2 definite-length arbitrary block format.
+// The output format is #<n><length><data> where n is the number of digits in the length.
+func (c *Context) ResultArbitraryBlock(data []byte) error {
+	c.writeDelimiter()
+	lengthStr := fmt.Sprintf("%d", len(data))
+	header := fmt.Sprintf("#%d%s", len(lengthStr), lengthStr)
+	c.writeData([]byte(header))
+	c.writeData(data)
 	c.outputCount++
 	c.firstOutput = false
 	return nil

@@ -206,6 +206,149 @@ func (c *Context) ParamBool(mandatory bool) (bool, error) {
 	return false, fmt.Errorf("invalid data type for boolean")
 }
 
+// ParamArbitraryBlock reads a mandatory or optional arbitrary block parameter.
+// Returns the raw data bytes from a definite-length block (#<n><length><data>).
+func (c *Context) ParamArbitraryBlock(mandatory bool) ([]byte, error) {
+	param, err := c.Parameter(mandatory)
+	if err != nil {
+		return nil, err
+	}
+
+	if param.Type == TokenUnknown {
+		return nil, nil
+	}
+
+	if param.Type != TokenArbitraryBlock {
+		c.ErrorPush(&Error{Code: -104, Info: "Data type error"})
+		return nil, fmt.Errorf("expected arbitrary block data")
+	}
+
+	data := param.Data
+	if len(data) < 2 || data[0] != '#' {
+		c.ErrorPush(&Error{Code: -104, Info: "Invalid arbitrary block"})
+		return nil, fmt.Errorf("invalid arbitrary block format")
+	}
+
+	n := int(data[1] - '0')
+	if n == 0 {
+		// Indefinite length: data is everything after #0
+		return data[2:], nil
+	}
+
+	// Definite length: skip #, n digit, and n length digits
+	headerLen := 2 + n
+	if len(data) < headerLen {
+		c.ErrorPush(&Error{Code: -104, Info: "Invalid arbitrary block"})
+		return nil, fmt.Errorf("invalid arbitrary block format")
+	}
+
+	return data[headerLen:], nil
+}
+
+// ParamChannelList reads a channel list parameter and returns all parsed entries.
+// Channel lists use the SCPI format (@<entries>) where entries are comma-separated.
+// Each entry is a single value (e.g. "1" or "1!2") or a range (e.g. "1:3" or "1!1:3!2").
+func (c *Context) ParamChannelList(mandatory bool) ([]ChannelListEntry, error) {
+	param, err := c.Parameter(mandatory)
+	if err != nil {
+		return nil, err
+	}
+
+	if param.Type == TokenUnknown {
+		return nil, nil
+	}
+
+	if param.Type != TokenProgramExpression {
+		c.ErrorPush(&Error{Code: -104, Info: "Data type error"})
+		return nil, fmt.Errorf("expected channel list expression")
+	}
+
+	data := string(param.Data)
+
+	// Validate channel list format: (@...)
+	if len(data) < 3 || data[0] != '(' || data[1] != '@' || data[len(data)-1] != ')' {
+		c.ErrorPush(&Error{Code: -104, Info: "Invalid channel list"})
+		return nil, fmt.Errorf("invalid channel list format")
+	}
+
+	inner := strings.TrimSpace(data[2 : len(data)-1])
+	if inner == "" {
+		return []ChannelListEntry{}, nil
+	}
+
+	parts := strings.Split(inner, ",")
+	entries := make([]ChannelListEntry, 0, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		entry, parseErr := parseChannelListEntry(part)
+		if parseErr != nil {
+			c.ErrorPush(&Error{Code: -104, Info: "Invalid channel list entry"})
+			return nil, parseErr
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
+func parseChannelListEntry(s string) (ChannelListEntry, error) {
+	if idx := strings.Index(s, ":"); idx >= 0 {
+		from, err := parseDimensionValues(s[:idx])
+		if err != nil {
+			return ChannelListEntry{}, err
+		}
+
+		to, err := parseDimensionValues(s[idx+1:])
+		if err != nil {
+			return ChannelListEntry{}, err
+		}
+
+		dims := len(from)
+		if len(to) > dims {
+			dims = len(to)
+		}
+
+		return ChannelListEntry{
+			IsRange:    true,
+			From:       from,
+			To:         to,
+			Dimensions: dims,
+		}, nil
+	}
+
+	from, err := parseDimensionValues(s)
+	if err != nil {
+		return ChannelListEntry{}, err
+	}
+
+	return ChannelListEntry{
+		IsRange:    false,
+		From:       from,
+		Dimensions: len(from),
+	}, nil
+}
+
+func parseDimensionValues(s string) ([]int32, error) {
+	parts := strings.Split(s, "!")
+	values := make([]int32, 0, len(parts))
+
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		val, err := strconv.ParseInt(p, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid channel list value: %s", p)
+		}
+		values = append(values, int32(val))
+	}
+
+	return values, nil
+}
+
 // ParamChoice reads a choice parameter from a list of options
 func (c *Context) ParamChoice(choices []ChoiceDef, mandatory bool) (int32, error) {
 	param, err := c.Parameter(mandatory)

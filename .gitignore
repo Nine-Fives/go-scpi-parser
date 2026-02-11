@@ -28,3 +28,6 @@ vendor/     # Dependency vendor directory (optional, depending on project's vend
 
 # Environment files
 .env
+
+# Test output files
+/test_interactive

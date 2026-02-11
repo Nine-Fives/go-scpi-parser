@@ -84,6 +84,7 @@ type Context struct {
 	cmdError      bool
 	errorQueue    []*Error
 	currentCmd    *Command
+	currentHeader string
 	currentParams []byte
 	paramsPos     int
 	userContext   interface{}
@@ -153,6 +154,18 @@ type Number struct {
 	Tag     int32
 	Unit    Unit
 	Base    int8
+}
+
+// ChannelListEntry represents a single entry in a SCPI channel list expression.
+// Per SCPI-99 Vol 1 Ch. 8.3.2, channel lists use the format (@<entries>).
+// Each entry is either a single channel address or a range of addresses.
+// Dimensions are separated by '!' (e.g. 1!2 is row=1, col=2).
+// Ranges use ':' (e.g. 1!1:3!2 is a 2D range from 1!1 to 3!2).
+type ChannelListEntry struct {
+	IsRange    bool
+	From       []int32
+	To         []int32
+	Dimensions int
 }
 
 // Parameter is an alias for Token
