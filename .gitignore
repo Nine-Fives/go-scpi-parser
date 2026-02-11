@@ -1,39 +1,30 @@
-# VIM/KDevelop Files
-*.swp
-*.kdev4
-.kdev4/
-*.kate-swp
-
-# Object files
-*.o
-
-# Libraries
-*.lib
-*.a
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.test
-examples/*/test
-
-# Backup files
-*~
-/libscpi/obj/
-/libscpi/dist/
-
-/nbproject/
-*.bak
-
-# Code coverage files
-*.gcno
-*.gcda
-*.gcov
 coverage.out
+
+# Binaries for programs
+*.exe
+*.obj
+*.o
+*.a
+*.lib
+
+# Compiled Go programs (from go build)
+# For production binaries, it is common to output them to a bin/ directory
+# Use the -o flag to specify the output name, e.g., go build -o bin/myprogram
+bin/
+# If you didn't use bin/
+main
+
+
+# Folders
+pkg/        # Package archives (from go install)
+vendor/     # Dependency vendor directory (optional, depending on project's vendoring strategy)
+
+# Test coverage
+*.out       # Test output files
+
+# IDE or editor-specific files (optional, can be in a global gitignore)
+.idea/
+.vscode/
+
+# Environment files
+.env
