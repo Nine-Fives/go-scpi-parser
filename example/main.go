@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	scpi "github.com/noah/scpi-parser"
+	scpi "github.com/Nine-Fives/go-scpi-parser"
 )
 
 var output strings.Builder

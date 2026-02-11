@@ -1,37 +1,76 @@
-SCPI parser library v2
-===========
+# go-scpi-parser
 
-![Build status](https://github.com/j123b567/scpi-parser/actions/workflows/main.yml/badge.svg) [![Coverage Status](https://coveralls.io/repos/j123b567/scpi-parser/badge.svg?branch=master&service=github)](https://coveralls.io/github/j123b567/scpi-parser?branch=master)
+![Build status](https://github.com/Nine-Fives/go-scpi-parser/actions/workflows/main.yml/badge.svg) [![Coverage Status](https://coveralls.io/repos/github/Nine-Fives/go-scpi-parser/badge.svg?branch=master)](https://coveralls.io/github/Nine-Fives/go-scpi-parser?branch=master)
 
-Documentation
---------
-Documentation is available at [http://j123b567.github.io/scpi-parser](http://j123b567.github.io/scpi-parser).
+A Go implementation of a SCPI (Standard Commands for Programmable Instruments) parser library, rewritten from Jan Breuer's original C library [j123b567/scpi-parser](https://github.com/j123b567/scpi-parser).
 
-Examples
---------
-Library contains several [examples](https://github.com/j123b567/scpi-parser/tree/master/examples) of usage but please note, that this code is just for educational purpose and not production ready.
-Examples are from several contributors and they are not tested and it is also not known, if they really work or can compile at all.
+## Documentation
 
-The core library itself is well tested and has more then 93% of the code covered by unit tests and integration tests and tries to be SCPI-99 compliant as much as possible.
+Documentation is available at [ninefives.github.io/go-scpi-parser](https://ninefives.github.io/go-scpi-parser).
 
-About
---------
+## Installation
 
-[SCPI](http://en.wikipedia.org/wiki/Standard_Commands_for_Programmable_Instruments) Parser library aims to provide parsing ability of SCPI commands on **instrument side**. All commands are defined by its patterns eg: `"STATus:QUEStionable:EVENt?"`.
+```sh
+go get github.com/Nine-Fives/go-scpi-parser
+```
 
-Source codes are published with open source BSD 2-Clause License.
+## Usage
 
-SCPI parser library is based on these standards
+```go
+package main
+
+import (
+	"strings"
+
+	scpi "github.com/Nine-Fives/go-scpi-parser"
+)
+
+func main() {
+	var output strings.Builder
+
+	commands := []*scpi.Command{
+		{Pattern: "*IDN?", Callback: func(ctx *scpi.Context) scpi.Result {
+			ctx.ResultText("MyCompany")
+			ctx.ResultText("MyInstrument")
+			ctx.ResultText("12345")
+			ctx.ResultText("1.0.0")
+			return scpi.ResOK
+		}},
+		{Pattern: "MEASure:VOLTage[:DC]?", Callback: func(ctx *scpi.Context) scpi.Result {
+			ctx.ResultDouble(3.14159)
+			return scpi.ResOK
+		}},
+	}
+
+	iface := &scpi.Interface{
+		Write: func(data []byte) (int, error) {
+			return output.Write(data)
+		},
+	}
+
+	ctx := scpi.NewContext(commands, iface, 256)
+	ctx.Input([]byte("*IDN?\n"))
+	// output.String() => "MyCompany","MyInstrument","12345","1.0.0"
+}
+```
+
+See [example/main.go](example/main.go) for a more complete example.
+
+## About
+
+[SCPI](http://en.wikipedia.org/wiki/Standard_Commands_for_Programmable_Instruments) Parser library provides parsing ability of SCPI commands on the **instrument side**. Commands are defined by patterns, e.g. `"STATus:QUEStionable:EVENt?"`.
+
+Source code is published under the open source BSD 2-Clause License.
+
+This library is based on the following standards:
 
 * [SCPI-99](https://www.ivifoundation.org/downloads/SCPI/scpi-99.pdf)
 * [IEEE 488.2-2004](http://dx.doi.org/10.1109/IEEESTD.2004.95390)
-
 
 **SCPI version compliance**
 <table>
 <tr><td>SCPI version<td>v1999.0</tr>
 </table>
-
 
 **Supported command patterns**
 <table>
@@ -59,3 +98,7 @@ SCPI parser library is based on these standards
 <tr><td>Channel list<td><code>(@1!2:3!4,5!6)</code></tr>
 <tr><td>Character data<td><code>MINimum</code>, <code>DEFault</code>, <code>INFinity</code></tr>
 </table>
+
+## License
+
+BSD 2-Clause — see [LICENSE](LICENSE) for details.
