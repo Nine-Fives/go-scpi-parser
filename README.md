@@ -4,6 +4,17 @@
 
 A Go implementation of a SCPI (Standard Commands for Programmable Instruments) parser library, rewritten from Jan Breuer's original C library [j123b567/scpi-parser](https://github.com/j123b567/scpi-parser).
 
+## Why not just use CGO?
+
+A key feature of Go is the ability to cross-compile for different platforms in a single command. For example, you can cross-compile this module for Linux ARM as simply as:
+
+```sh
+GOOS=linux GOARCH=arm GOARM=7 go build
+```
+
+Without this Go rewrite, compiling Jan's original C scpi-parser would require a C cross-compiler for the target platform. For quick iteration on your test equipment, a pure Go implementation is superior.
+
+
 ## Documentation
 
 Documentation is available at [ninefives.github.io/go-scpi-parser](https://ninefives.github.io/go-scpi-parser).
