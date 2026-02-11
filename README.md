@@ -54,7 +54,11 @@ func main() {
 }
 ```
 
-See [example/main.go](example/main.go) for a more complete example.
+See [examples/main.go](example/main.go) for a more complete example. To run it:
+
+```sh
+go run examples/main.go
+```
 
 ## About
 
