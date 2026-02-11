@@ -36,3 +36,4 @@ examples/*/test
 *.gcno
 *.gcda
 *.gcov
+coverage.out

@@ -110,15 +110,6 @@ func matchPattern(pattern, value string) bool {
 
 // matchCommand checks if a command header matches a pattern
 func matchCommand(pattern, header string) bool {
-	// Check if pattern and header query status match
-	patternIsQuery := strings.HasSuffix(pattern, "?")
-	headerIsQuery := strings.HasSuffix(header, "?")
-
-	// Query patterns should only match query headers, and vice versa
-	if patternIsQuery != headerIsQuery {
-		return false
-	}
-
 	// Remove trailing ? from both pattern and header for comparison
 	pattern = strings.TrimSuffix(pattern, "?")
 	header = strings.TrimSuffix(header, "?")
