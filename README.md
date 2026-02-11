@@ -6,7 +6,7 @@ A Go implementation of a SCPI (Standard Commands for Programmable Instruments) p
 
 ## Why not just use CGO?
 
-A key feature of Go is the ability to cross-compile for different platforms in a single command. For example, you can cross-compile this module for Linux ARM as simply as:
+A key feature of Go is the ability to cross-compile for different platforms in a single command. For example, you can cross-compile this module for Linux on ARMv7 as simply as:
 
 ```sh
 GOOS=linux GOARCH=arm GOARM=7 go build

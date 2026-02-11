@@ -407,7 +407,13 @@ func (c *Context) paramToInt32(param *Parameter) (int32, error) {
 			}
 		}
 		numStr = strings.TrimSpace(numStr)
-		val, err := strconv.ParseFloat(numStr, 32)
+		// Use integer parse for values without decimal point or exponent
+		// to avoid float32 precision loss (e.g. INT32_MAX rounds in float32)
+		if !strings.Contains(numStr, ".") && !strings.ContainsAny(numStr, "eE") {
+			val, err := strconv.ParseInt(numStr, 10, 32)
+			return int32(val), err
+		}
+		val, err := strconv.ParseFloat(numStr, 64)
 		return int32(val), err
 
 	default:
@@ -439,6 +445,10 @@ func (c *Context) paramToInt64(param *Parameter) (int64, error) {
 			}
 		}
 		numStr = strings.TrimSpace(numStr)
+		// Use integer parse for values without decimal point or exponent
+		if !strings.Contains(numStr, ".") && !strings.ContainsAny(numStr, "eE") {
+			return strconv.ParseInt(numStr, 10, 64)
+		}
 		val, err := strconv.ParseFloat(numStr, 64)
 		return int64(val), err
 

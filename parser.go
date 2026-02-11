@@ -62,50 +62,31 @@ func (c *Context) ErrorPop() *Error {
 	return err
 }
 
-// matchPattern checks if a value matches a SCPI pattern
-// Pattern supports short/long form like "MEASure" matches "MEAS" or "MEASURE"
+// matchPattern checks if a value matches a SCPI pattern keyword.
+// Only exact short form (uppercase portion) or exact long form (full keyword)
+// are accepted, per IEEE 488.2. For example, pattern "MEASure" matches
+// "MEAS" (short) and "MEASURE" (long) but not "MEASU" or "MEASUR".
 func matchPattern(pattern, value string) bool {
 	value = strings.ToUpper(value)
 
-	pIdx := 0
-	vIdx := 0
-
-	// Try to match
-	for pIdx < len(pattern) && vIdx < len(value) {
-		pChar := pattern[pIdx]
-		vChar := value[vIdx]
-
-		// Convert pattern character to uppercase for comparison
-		pCharUpper := pChar
-		if pChar >= 'a' && pChar <= 'z' {
-			pCharUpper = pChar - 32
+	// Find short form length (position of first lowercase letter in pattern)
+	shortLen := len(pattern)
+	for i := 0; i < len(pattern); i++ {
+		if pattern[i] >= 'a' && pattern[i] <= 'z' {
+			shortLen = i
+			break
 		}
-
-		if pCharUpper == vChar {
-			pIdx++
-			vIdx++
-			continue
-		}
-
-		// Skip lowercase letters in pattern (optional long form)
-		if pChar >= 'a' && pChar <= 'z' {
-			pIdx++
-			continue
-		}
-
-		// Mismatch
-		return false
 	}
 
-	// Check if we matched all of value
-	if vIdx == len(value) {
-		// Skip remaining lowercase letters in pattern
-		for pIdx < len(pattern) && pattern[pIdx] >= 'a' && pattern[pIdx] <= 'z' {
-			pIdx++
-		}
-		return pIdx == len(pattern)
-	}
+	fullUpper := strings.ToUpper(pattern)
 
+	// Accept only exact short form or exact long form length
+	if len(value) == shortLen {
+		return fullUpper[:shortLen] == value
+	}
+	if len(value) == len(fullUpper) {
+		return fullUpper == value
+	}
 	return false
 }
 
@@ -191,6 +172,33 @@ func (c *Context) findCommand(header string) *Command {
 	return nil
 }
 
+// composeCompoundCommand implements IEEE 488.2 compound command path inheritance.
+// After a semicolon, the next command inherits the subsystem path of the previous
+// command unless it starts with ':' (absolute) or '*' (common command).
+func composeCompoundCommand(prev, current string) string {
+	if current == "" || prev == "" {
+		return current
+	}
+
+	// Absolute path or common command — no inheritance
+	if current[0] == '*' || current[0] == ':' {
+		return current
+	}
+
+	// Previous was common command — no inheritance
+	if prev[0] == '*' {
+		return current
+	}
+
+	// Find last ':' in previous command to extract subsystem prefix
+	lastColon := strings.LastIndex(prev, ":")
+	if lastColon < 0 {
+		return current
+	}
+
+	return prev[:lastColon+1] + current
+}
+
 // Parse parses a complete SCPI command line
 func (c *Context) Parse(data []byte) error {
 	c.outputCount = 0
@@ -202,12 +210,21 @@ func (c *Context) Parse(data []byte) error {
 		len:    len(data),
 	}
 
+	var prevHeader string
+
 	for !state.isEOS() {
 		// Skip whitespace
 		state.lexWhitespace()
 
 		if state.isEOS() {
 			break
+		}
+
+		// Skip bare newlines/carriage returns (empty messages per IEEE 488.2)
+		if b := state.peek(); b == '\n' || b == '\r' {
+			state.lexNewLine()
+			prevHeader = ""
+			continue
 		}
 
 		// Parse program header (command)
@@ -218,8 +235,10 @@ func (c *Context) Parse(data []byte) error {
 			return fmt.Errorf("invalid command at position %d", state.pos)
 		}
 
+		// Compose compound command path (IEEE 488.2 section 7.2)
+		headerStr := composeCompoundCommand(prevHeader, string(header.Data))
+
 		// Find matching command
-		headerStr := string(header.Data)
 		cmd := c.findCommand(headerStr)
 		if cmd == nil {
 			c.ErrorPush(&Error{Code: -113, Info: fmt.Sprintf("Undefined header: %s", headerStr)})
@@ -240,8 +259,8 @@ func (c *Context) Parse(data []byte) error {
 
 		// Skip to end of command (semicolon or newline)
 		for !state.isEOS() {
-			c := state.peek()
-			if c == ';' || c == '\n' || c == '\r' {
+			ch := state.peek()
+			if ch == ';' || ch == '\n' || ch == '\r' {
 				break
 			}
 			state.advance(1)
@@ -264,9 +283,15 @@ func (c *Context) Parse(data []byte) error {
 		// Skip terminator
 		if !state.isEOS() {
 			tok, _ := state.lexSemicolon()
-			if tok.Type == TokenUnknown {
+			if tok.Type == TokenSemicolon {
+				// Semicolon: next command inherits path context
+				prevHeader = headerStr
+			} else {
 				state.lexNewLine()
+				prevHeader = ""
 			}
+		} else {
+			prevHeader = ""
 		}
 
 		// Write output newline if needed

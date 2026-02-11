@@ -76,10 +76,9 @@ func runBothParsers(data []byte) (cOut string, cErrors int, goOut string, goErro
 	return normalizeOutput(cRaw), cErrs, normalizeOutput(goResult.output), goResult.errCount
 }
 
-// TestKnownDivergences documents known behavioral differences between
-// the Go and C parsers that were found during seed corpus testing.
-// These serve as regression tests and bug documentation.
-func TestKnownDivergences(t *testing.T) {
+// TestFormerDivergences verifies that previously known behavioral differences
+// between the Go and C parsers have been resolved.
+func TestFormerDivergences(t *testing.T) {
 	ensureCInit()
 
 	tests := []struct {
@@ -90,22 +89,22 @@ func TestKnownDivergences(t *testing.T) {
 		{
 			name:  "choice short form",
 			input: "TEST:CHOI? LOW\n",
-			desc:  "C parser does not match short form CHOI for CHOice; Go does",
+			desc:  "Both parsers should reject partial short form CHOI for CHOice",
 		},
 		{
 			name:  "int32 max value",
 			input: "TEST:INT32 2147483647\n",
-			desc:  "Go outputs -2147483648 for INT32_MAX; C correctly outputs 2147483647",
+			desc:  "Both parsers should correctly output 2147483647",
 		},
 		{
 			name:  "compound command without colon",
 			input: "TEST:INT32 1;TEST:INT32 2\n",
-			desc:  "C requires ;: for unrelated compound commands; Go processes both with ;",
+			desc:  "Both parsers should require ;: for unrelated compound commands",
 		},
 		{
-			name:  "empty newline error",
+			name:  "empty newline",
 			input: "\n",
-			desc:  "Go reports error on bare newline; C does not",
+			desc:  "Both parsers should silently ignore bare newlines",
 		},
 	}
 
@@ -116,6 +115,16 @@ func TestKnownDivergences(t *testing.T) {
 			t.Logf("Input: %q", tt.input)
 			t.Logf("C output:  %q (errors: %d)", cOut, cErrors)
 			t.Logf("Go output: %q (errors: %d)", goOut, goErrors)
+
+			if !outputsEquivalent(cOut, goOut) {
+				t.Errorf("output mismatch: C=%q Go=%q", cOut, goOut)
+			}
+
+			cHadError := cErrors > 0
+			goHadError := goErrors > 0
+			if cHadError != goHadError {
+				t.Errorf("error agreement mismatch: C errors=%d, Go errors=%d", cErrors, goErrors)
+			}
 		})
 	}
 }
@@ -179,11 +188,6 @@ func FuzzRawInput(f *testing.F) {
 		// Ensure newline termination
 		if data[len(data)-1] != '\n' {
 			data = append(data, '\n')
-		}
-		// Skip whitespace-only inputs: known divergence where Go errors
-		// on blank lines but C silently ignores them.
-		if len(strings.TrimSpace(string(data))) == 0 {
-			return
 		}
 
 		cOut, cErrors, goOut, goErrors := runBothParsers(data)

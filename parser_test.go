@@ -13,13 +13,20 @@ func TestMatchPattern(t *testing.T) {
 	}{
 		{"MEASure", "MEAS", true},
 		{"MEASure", "MEASURE", true},
-		{"MEASure", "MEASUR", true},
+		{"MEASure", "MEASUR", false}, // only exact short or long form
+		{"MEASure", "MEASU", false},
 		{"MEASure", "MEA", false},
 		{"MEASure", "MEASUREMENT", false},
 		{"VOLTage", "VOLT", true},
 		{"VOLTage", "VOLTAGE", true},
+		{"VOLTage", "VOLTA", false},
 		{"CURRent", "CURR", true},
 		{"CURRent", "CURRENT", true},
+		{"CURRent", "CURRE", false},
+		{"CHOice", "CHO", true},
+		{"CHOice", "CHOICE", true},
+		{"CHOice", "CHOI", false}, // was a known divergence
+		{"LOW", "LOW", true},      // all-uppercase pattern
 	}
 
 	for _, tt := range tests {
@@ -311,6 +318,110 @@ func TestParseCompoundCommand(t *testing.T) {
 
 	if callCount != 2 {
 		t.Errorf("Callbacks called %d times, want 2", callCount)
+	}
+}
+
+func TestParseEmptyNewline(t *testing.T) {
+	commands := []*Command{
+		{
+			Pattern: "TEST",
+			Callback: func(ctx *Context) Result {
+				return ResOK
+			},
+		},
+	}
+
+	iface := &Interface{
+		Write: func(data []byte) (int, error) {
+			return len(data), nil
+		},
+	}
+
+	// Bare newline should not produce an error
+	ctx := NewContext(commands, iface, 256)
+	err := ctx.Parse([]byte("\n"))
+	if err != nil {
+		t.Errorf("bare newline should not error, got: %v", err)
+	}
+
+	// CRLF should not produce an error
+	ctx = NewContext(commands, iface, 256)
+	err = ctx.Parse([]byte("\r\n"))
+	if err != nil {
+		t.Errorf("bare CRLF should not error, got: %v", err)
+	}
+
+	// Multiple bare newlines
+	ctx = NewContext(commands, iface, 256)
+	err = ctx.Parse([]byte("\n\n\n"))
+	if err != nil {
+		t.Errorf("multiple bare newlines should not error, got: %v", err)
+	}
+}
+
+func TestCompoundCommandPathInheritance(t *testing.T) {
+	var results []int32
+
+	commands := []*Command{
+		{
+			Pattern: "TEST:VOLT",
+			Callback: func(ctx *Context) Result {
+				val, err := ctx.ParamInt32(true)
+				if err != nil {
+					return ResErr
+				}
+				results = append(results, val)
+				return ResOK
+			},
+		},
+		{
+			Pattern: "TEST:CURR",
+			Callback: func(ctx *Context) Result {
+				val, err := ctx.ParamInt32(true)
+				if err != nil {
+					return ResErr
+				}
+				results = append(results, val)
+				return ResOK
+			},
+		},
+	}
+
+	iface := &Interface{
+		Write: func(data []byte) (int, error) {
+			return len(data), nil
+		},
+	}
+
+	// Semicolon with relative path: CURR inherits "TEST:" from TEST:VOLT
+	results = nil
+	ctx := NewContext(commands, iface, 256)
+	err := ctx.Input([]byte("TEST:VOLT 1;CURR 2\n"))
+	if err != nil {
+		t.Fatalf("compound command with relative path failed: %v", err)
+	}
+	if len(results) != 2 || results[0] != 1 || results[1] != 2 {
+		t.Errorf("compound relative: got %v, want [1 2]", results)
+	}
+
+	// Semicolon with absolute path (;:) should also work
+	results = nil
+	ctx = NewContext(commands, iface, 256)
+	err = ctx.Input([]byte("TEST:VOLT 1;:TEST:CURR 2\n"))
+	if err != nil {
+		t.Fatalf("compound command with absolute path failed: %v", err)
+	}
+	if len(results) != 2 || results[0] != 1 || results[1] != 2 {
+		t.Errorf("compound absolute: got %v, want [1 2]", results)
+	}
+
+	// Semicolon without colon on unrelated commands should fail
+	// (TEST:VOLT 1;TEST:VOLT 2 → second becomes TEST:TEST:VOLT which doesn't exist)
+	results = nil
+	ctx = NewContext(commands, iface, 256)
+	err = ctx.Input([]byte("TEST:VOLT 1;TEST:VOLT 2\n"))
+	if err == nil {
+		t.Errorf("unrelated compound without colon should error")
 	}
 }
 
@@ -1016,6 +1127,8 @@ func TestParamInt32(t *testing.T) {
 		{"decimal", "42", 42},
 		{"negative", "-17", -17},
 		{"zero", "0", 0},
+		{"int32 max", "2147483647", 2147483647},
+		{"int32 min", "-2147483648", -2147483648},
 		{"hex", "#HFF", 255},
 		{"octal", "#Q77", 63},
 		{"binary", "#B1010", 10},
