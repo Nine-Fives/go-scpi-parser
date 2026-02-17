@@ -40,7 +40,7 @@ jobs:
       run: go install github.com/mattn/goveralls@latest
 
     - name: Run tests with coverage
-      run: go test -v -covermode=count -coverprofile=coverage.out ./...
+      run: go test -v -covermode=count -coverprofile=coverage.out $(go list ./... | grep -v -E '(examples|fuzz)')
 
     - name: Send coverage to Coveralls
       env:
